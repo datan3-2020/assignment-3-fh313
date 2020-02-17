@@ -1,7 +1,7 @@
 ---
 title: "Statistical assignment 3"
-author: "[add your name here] [add your candidate number here - mandatory]"
-date: "[add date here]"
+author: "Francesca Hume 660024948"
+date: "12/02/2020"
 output: github_document
 ---
 
@@ -33,7 +33,7 @@ library(data.table)
 
 files <- dir(
              # Select the folder where the files are stored.
-             "[add your path here]",
+             "/Users/chescamae98/Desktop/UKDA-6614-tab/tab/",
              # Tell R which pattern you want present in the files it will display.
              pattern = "indresp",
              # We want this process to repeat through the entire folder.
@@ -73,8 +73,16 @@ for (i in 1:7) {
 Now we have got the data from all 7 waves in the same data frame **all7** in the wide format. Note that the panel is unbalanced, i.e. we included all people who participated in at least one wave of the survey. Reshape the data to the long format. The resulting data frame should have six columns for six variables.
 
 ```{r}
+
+
+
+
 Long <- all7 %>%
-  ...
+  pivot_longer(a_memorig:g_vote6, names_to = "variable", values_to = "value") %>%
+  separate(variable, into = c("wave", "variable"), sep = "_", extra = "merge") %>%
+  pivot_wider(names_from = variable, values_from = value) 
+
+  
 Long
 ```
 
@@ -83,15 +91,20 @@ Long
 Now we want to filter the data keeping only respondents from the original UKHLS sample for Great Britain (memorig == 1). We also want to clean the variables for sex (recoding it to "male" or "female") and political interest (keeping the values from 1 to 4 and coding all negative values as missing). Tabulate *sex* and *vote6* to make sure your recodings were correct. 
 
 ```{r}
-Long <- Long %>%
-        filter(...) %>%
-        mutate(sex_dv = ...) %>%
-        mutate(vote6 = ...)
+table(Long$vote6)
 
-Long %>%
-        ...
-Long %>%
-        ...
+Long <- Long %>%
+        filter(memorig==1) %>%
+        mutate(sex_dv =ifelse(sex_dv == 2, "female",
+                           ifelse(sex_dv == 1, "male", NA))) %>%
+        mutate(vote6 = case_when(
+          vote6 %in% 1:4 ~ vote6,
+          vote6 < 1 ~ NA_integer_
+        ))
+
+
+table(Long$sex_dv, Long$vote6)
+
 
 ```
 
@@ -100,8 +113,17 @@ Long %>%
 Political interest is an ordinal variable, but we will treat it as interval and calculate mean political interest for men and women in each wave.
 
 ```{r}
+
+table(Long$vote6)
+
+
+
 meanVote6 <- Long %>%
-        ...
+  group_by(wave, sex_dv) %>%
+  filter(!is.na(sex_dv)) %>%
+  summarise(mean(vote6, na.rm = TRUE))
+  
+  
         
 meanVote6
 ```
@@ -120,8 +142,19 @@ In the cells of this table you should have mean political interest by sex and wa
 Write a short interpretation of your findings.
 
 ```{r}
-meanVote6 %>%
-        ...
+names(meanVote6)<- c("Wave", "Sex", "mean_vote" )
+
+
+
+meanVote6<- meanVote6 %>%
+  pivot_wider(names_from = Wave, values_from = mean_vote)
+
+meanVote6
+
+
+## Noticable from the data is that, in all 7 of the waves looked at, the mean policitical interest of females is always a higher value (suggesting lesser political interest) than males. 
+## Over the waves, the mean values of both males and females does appear to fluctuate, however, it appears that in general, political interest is increasing for both sexes as the mean values get lower. 
+
 ```
 
 ## Estimate stability of political interest (30 points)
@@ -141,12 +174,82 @@ Large Delta indicates unstable political interest. Delta = 0 indicates a constan
 Write the R code that does the following.
 
 1. To simplify interpretation, keep only the respondents with non-missing values for political interest in all seven waves.
+
 2. Calculate Delta for each person in the data set.
+
 3. Calculate mean Delta for men and women.
+
 4. Calculate mean Delta by age (at wave 1) and plot the local polynomial curve showing the association between age at wave 1 and mean Delta. You can use either **ggplot2** or the *scatter.smooth()* function from base R.
+
 5. Write a short interpretation of your findings.
 
 ```{r}
-...
+#1 
+Completeall<- Long
+
+Completeall<- Completeall %>% 
+  group_by(pidp) %>%
+  filter(!is.na(vote6)) %>%
+  mutate(delta = order_by(wave, vote6 - lag(vote6))) %>%
+  mutate(delta = ifelse(is.na(delta), 0, delta)) %>% 
+  filter(n()>= 7) 
+  
+Completeall$delta<-abs(Completeall$delta)
+
+Completeall<- Completeall %>%
+  group_by(pidp) %>%
+  mutate(
+    totaldelta = sum(delta)
+  )
+```
+
+```{r}
+
+
+## Gender
+
+mfmean2<- tapply(Completeall$totaldelta, Completeall$sex_dv, mean, na.rm=TRUE)
+
+mfmean2
+```
+
+```{r}
+
+## age
+
+table(Completeall$age_dv)
+
+
+Completeall.age<- Completeall %>%
+  mutate(age_dv = case_when(
+          age_dv %in% 15:104 ~ age_dv,
+          age_dv < 1 ~ NA_integer_))
+
+Completeall.age<- Completeall.age %>% filter(!is.na(age_dv))
+
+
+Completeall.age<- subset(Completeall.age, wave == 'a')
+
+agemean<-as.data.frame(tapply(Completeall.age$totaldelta, Completeall.age$age_dv, mean,na.rm=TRUE))
+
+agemean<- agemean %>%
+  rownames_to_column("Age")
+
+colnames(agemean)<- c("Age", "Mean")
+
+agemean$Age<- as.numeric(agemean$Age)
+
+
+ggplot<- ggplot(agemean, aes(x = agemean$Age, y= agemean$Mean))+
+  geom_point()+
+  geom_smooth()+
+  labs(title="Average Delta Score by Age",
+  x="Age",
+  y="Delta")
+
+ggplot
+
+## Looking at the plot, it shows that up until the age of around 50, the detal score, and this political interest, was relatively stable; decreasing slightly if anything between ages 15 to 50. From age 50 however, it appears that the delta score average increases as age increases, suggesting that political interest varies a lot more for these individuals. 
 
 ```
+
